@@ -1,0 +1,364 @@
+package c2g2.geometry;
+
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import org.joml.Vector3f;
+import c2g2.engine.graph.Mesh;
+import c2g2.engine.graph.OBJLoader;
+
+/*
+ * A mesh represented by HalfEdge data structure
+ */
+public class HalfEdgeMesh {
+
+	private ArrayList<HalfEdge> halfEdges;
+	private ArrayList<Vertex> vertices;
+	
+	/*
+	 * TODO:
+	 * Convert this HalfEdgeMesh into an indexed triangle mesh
+	 */
+	public Mesh toMesh() {
+		Mesh output = new Mesh();
+		float[] pos = new float[vertices.size() * 3];
+		int pos_track = 0;
+		float[] norms = new float[vertices.size() * 3];
+		int norms_track = 0;
+		int[] inds = new int[halfEdges.size()];
+		int inds_track = 0;
+	    
+		for(int i=0;i<vertices.size();i++){
+			Vertex vertex = vertices.get(i);
+			Vector3f position = vertex.getPos();
+			Vector3f normal = vertex.getNorm();
+			pos[pos_track++] = position.x;
+			pos[pos_track++] = position.y;
+			pos[pos_track++] = position.z;
+			norms[norms_track++] = normal.x;
+			norms[norms_track++] = normal.z;
+			norms[norms_track++] = normal.z;
+		}
+		
+		for(int i=0;i<halfEdges.size();i++){
+			HalfEdge h = halfEdges.get(i);
+			Vector3f position = h.getNextV().getPos();
+			int index = 0;
+			for(int j=0;j<vertices.size();j++){
+				if(vertices.get(j).getPos().equals(position)){
+					index = j;
+					break;
+				}
+			}
+			inds[inds_track] = index;
+			inds_track++;
+		}
+		
+		float[] textCoords = new float[vertices.size() * 2];
+		Arrays.fill(textCoords, 0.0f);
+		output.setMesh(pos, textCoords, norms, inds);
+		
+		System.out.println("the size of pos in toMesh: " + pos.length);
+		System.out.println(inds.length);
+		for(int i=0;i<inds.length/3;i++){
+			System.out.println(inds[3*i] + "," + inds[3*i+1] + "," + inds[3*i+2]);
+		}
+
+		System.out.println("convertion complete");
+		
+		return output;
+	}
+	
+	/*
+	 * Remove the first vertex from the HalfEdgeMesh. 
+	 * See the specification for the detailed requirement.
+	 */
+	public void removeFirstVertex(){
+		Vertex vertex = halfEdges.get(1).getNextV();
+		removeVertex(vertex);
+	}
+	
+	public void collapseFirstEdge(){
+		System.out.println("the edge we get rid of is: " + halfEdges.get(0).getNextV());
+		collapseEdge(halfEdges.get(0));
+	}
+	
+	private boolean isClosed(ArrayList<HalfEdge> hs){
+		for(int i=0;i<hs.size();i++){
+			HalfEdge current = hs.get(i);
+			if(current.getFlipE() == null || current.equals(current.getFlipE()))
+				return false;
+		}
+		return true;
+	}
+	
+	/*
+	 * TODO:
+	 * See the specification for the detailed requirement.
+	 */
+	public void removeVertex(Vertex vtx) {
+		
+		vertices.remove(vtx);
+		System.out.println(vtx.getPos());
+		
+		//find all edges that are related to the removed vertex, and record their index.
+		List<HalfEdge> related_edges = new ArrayList<HalfEdge>();
+		for(int i=0;i<halfEdges.size();i++){
+			HalfEdge h = halfEdges.get(i);
+			if(h.getNextV().getPos().equals(vtx.getPos())){
+				related_edges.add(h);
+			}
+		}
+		
+		List<HalfEdge> related_edges_ordered = new ArrayList<HalfEdge>();
+		HalfEdge init = related_edges.get(0);
+		
+		related_edges_ordered.add(init);
+		HalfEdge current = init.getFlipE().getNextE();
+		while(!current.equals(init)){
+
+			related_edges_ordered.add(current);
+			current = current.getFlipE().getNextE();
+		}
+		
+		int size = related_edges.size();
+		
+//		for(int i=0;i<size;i++){
+//			System.out.println(related_edges.get(i).getNextV().getPos() + "\n");
+//			System.out.println(related_edges_ordered.get(i).getNextV().getPos());
+//		}
+		List<HalfEdge> related_edges_next = new ArrayList<HalfEdge>();
+		List<HalfEdge> related_edges_next_ordered = new ArrayList<HalfEdge>();
+		//remove edges and store their next edges in another list
+		
+//		System.out.println("size is: " + size);
+		
+//		for(int i=0;i<halfEdges.size();i++)
+//			System.out.println(halfEdges.get(i).getNextV().getPos());
+//		System.out.println();
+		
+		for(int i=0;i<size;i++){
+			HalfEdge h = related_edges.get(i);
+			related_edges_next.add(h.getNextE());
+			halfEdges.remove(h);
+			halfEdges.remove(h.getFlipE());
+			halfEdges.remove(h.getNextE());
+		}
+		
+		for(int i=0;i<size;i++){
+			HalfEdge h = related_edges_ordered.get(i);
+			related_edges_next_ordered.add(h.getNextE());
+		}
+
+		System.out.println("related edges ordered next:");
+		for(int i=0;i<related_edges_next_ordered.size();i++)
+			System.out.println(related_edges_next_ordered.get(i).getNextV().getPos());
+//
+//		
+//		for(int i=0;i<halfEdges.size();i++)
+//			System.out.println(halfEdges.get(i).getNextV().getPos());
+//		System.out.println();
+		
+		//pick one arbitary vertex to begin
+		HalfEdge begin = related_edges_next.get(0);
+		begin.setNextE(related_edges_next.get(1));
+		
+		HalfEdge prev = begin;
+		for(int i=0;i<size-3;i++){
+			halfEdges.add(prev);
+			
+			HalfEdge new_edge_forward = new HalfEdge();
+			HalfEdge new_edge_backward = new HalfEdge();
+			
+			HalfEdge two = related_edges_next_ordered.get(i+1);
+			HalfEdge three = related_edges_next_ordered.get(i+2);
+			
+			halfEdges.add(two);
+			
+			new_edge_forward.setNextE(prev);//
+			new_edge_forward.setNextV(three.getNextV());//
+			new_edge_forward.setFlipE(new_edge_backward);//
+			two.setNextE(new_edge_forward);//
+			
+			new_edge_backward.setNextE(three);//
+			new_edge_backward.setNextV(begin.getNextV());//
+			new_edge_backward.setFlipE(new_edge_forward);//
+			
+			prev = new_edge_backward;
+			
+			halfEdges.add(new_edge_forward);
+			
+		}
+		
+		HalfEdge second_last = related_edges_next_ordered.get(size-2);
+		HalfEdge last = related_edges_next_ordered.get(size-1);
+		second_last.setNextE(last);
+		last.setNextE(prev);
+		prev.setNextE(second_last);
+		halfEdges.add(prev);
+		halfEdges.add(second_last);
+		halfEdges.add(last);
+		
+		System.out.println();
+		for(int i=0;i<halfEdges.size();i++)
+			System.out.println(halfEdges.get(i).getNextV().getPos());
+		System.out.println();
+		
+		
+//		System.out.println(isClosed(halfEdges));
+		//check
+	}
+	
+	/*
+	 * TODO:
+	 * Collapse the given edge into a point.
+	 * See the specification for the detailed requirement.
+	 */
+	public void collapseEdge(HalfEdge edge) {
+		// complete!
+		System.out.println("collapseEdge is: " + edge.getNextV().getPos() + edge.getFlipE().getNextV().getPos());
+		HalfEdge forward = edge;
+		HalfEdge backward = forward.getFlipE();
+		//deal with vertices
+		Vertex fv = forward.getNextV();
+		Vertex bv = backward.getNextV();
+		Vector3f fv_pos = fv.getPos();
+		Vector3f bv_pos = bv.getPos();
+		Vector3f middle_pos = new Vector3f((fv_pos.x+bv_pos.x)/2, (fv_pos.y+bv_pos.y)/2,(fv_pos.z+bv_pos.z)/2);
+		Vector3f fv_norm = fv.getNorm();
+		Vector3f bv_norm = bv.getNorm();
+		Vector3f middle_norm = new Vector3f((fv_norm.x+bv_norm.x)/2, (fv_norm.y+bv_norm.y)/2,(fv_norm.z+bv_norm.z)/2);
+		Vertex new_v = new Vertex(middle_pos, middle_norm);
+		vertices.remove(fv);
+		vertices.remove(bv);
+		vertices.add(new_v);
+		
+		HalfEdge f_next = forward.getNextE();
+		HalfEdge b_next = backward.getNextE();
+		HalfEdge f_next_next = f_next.getNextE();
+		HalfEdge b_next_next = b_next.getNextE();
+		
+		Vertex side1 = forward.getNextE().getNextE().getNextV();
+		Vertex side2 = backward.getNextE().getNextE().getNextV();
+		
+		//set two edges from side1 to new vertex
+		HalfEdge new_to_side1 = new HalfEdge();
+		new_to_side1.setNextE(f_next.getFlipE().getNextE());
+		new_to_side1.setNextV(new_v);
+		HalfEdge side1_to_new = new HalfEdge();
+		side1_to_new.setNextE(f_next_next.getFlipE().getNextE());
+		side1_to_new.setNextV(side1);
+		side1_to_new.setFlipE(new_to_side1);
+		new_to_side1.setFlipE(side1_to_new);
+		
+		//set two edges from side2 to new vertex
+		HalfEdge new_to_side2 = new HalfEdge();
+		new_to_side2.setNextE(b_next_next.getFlipE().getNextE());
+		new_to_side2.setNextV(new_v);
+		HalfEdge side2_to_new = new HalfEdge();
+		side2_to_new.setNextE(b_next.getFlipE().getNextE());
+		side2_to_new.setNextV(side2);
+		side2_to_new.setFlipE(new_to_side2);
+		new_to_side2.setFlipE(side2_to_new);
+		
+		for(int i=0;i<halfEdges.size();i++){
+			System.out.println(halfEdges.get(i).getNextV().getPos());
+		}
+		System.out.println();
+		
+		halfEdges.remove(f_next);
+		halfEdges.remove(b_next);
+		halfEdges.remove(f_next_next);
+		halfEdges.remove(b_next_next);
+		halfEdges.remove(forward);
+		halfEdges.remove(backward);
+		
+		System.out.println(halfEdges.size());
+		
+		//add four new edges to the arraylist
+		for(int i=0;i<halfEdges.size();i++){
+			HalfEdge ele = halfEdges.get(i);
+			//add inner four
+			if(ele.getNextV().getPos().equals(fv.getPos())){
+				System.out.println("fv modified");
+				ele.setNextV(new_v);
+			}
+			else if(ele.getFlipE().getNextV().getPos().equals(fv.getPos())){
+				System.out.println("fv flip modified");
+				ele.getFlipE().setNextV(new_v);
+			}
+			else if(ele.getNextV().getPos().equals(bv.getPos())){
+				System.out.println("bv modified");
+				ele.setNextV(new_v);
+			}
+			else if(ele.getFlipE().getNextV().getPos().equals(bv.getPos())){
+				System.out.println("bv flip modified");
+				ele.getFlipE().setNextV(new_v);
+			}
+		}
+		
+		System.out.println();
+		for(int i=0;i<halfEdges.size();i++){
+			System.out.println(halfEdges.get(i).getNextV().getPos());
+		}
+	}
+	
+	public HalfEdgeMesh(Mesh mesh) {
+		
+		halfEdges = new ArrayList<HalfEdge>();
+		vertices = new ArrayList<Vertex>();
+		
+		float[] norms = mesh.getNorms();
+		float[] pos = mesh.getPos();
+		int[] inds = mesh.getInds();
+		//copy pos and norms to vertices
+		for(int i=0;i<pos.length/3;i++){
+			Vector3f vertice_coord = new Vector3f(pos[3*i], pos[3*i+1], pos[3*i+2]);
+			Vector3f vertice_norm = new Vector3f(norms[3*i], norms[3*i+1], norms[3*i+2]);
+			Vertex vertex = new Vertex(vertice_coord, vertice_norm);
+			vertices.add(vertex);
+		}
+
+		int i = 0;
+		while(i<inds.length){
+			int size_of_face = 3;
+			//vertices in sequence of a face
+			//here, 3 is the number of vertices in a face
+			for(int j=0;j<size_of_face;j++){
+				Vertex vertex = vertices.get(inds[i+j]);
+				HalfEdge edge = new HalfEdge();
+				vertex.setEdge(edge);
+				edge.setNextV(vertex);
+				Face face = new Face(edge);
+				edge.setlFace(face);
+				halfEdges.add(edge);
+			}
+			for(int j=0;j<size_of_face;j++){
+				if(j==2)
+					halfEdges.get(halfEdges.size()-size_of_face+j).setNextE(halfEdges.get(halfEdges.size()-size_of_face));
+				else
+					halfEdges.get(halfEdges.size()-size_of_face+j).setNextE(halfEdges.get(halfEdges.size()-size_of_face+1+j));
+			}
+			i+=size_of_face;
+		}
+		for(int j=0;j<halfEdges.size();j++){
+			HalfEdge current = halfEdges.get(j);
+			Vertex vertex_current = current.getNextV();
+			Vertex vertex_next = current.getNextE().getNextV();
+			for(int k=0;k<halfEdges.size();k++){
+				HalfEdge comparison = halfEdges.get(k);
+				Vertex vertex_comparison = comparison.getNextV();
+				Vertex vertex_comparison_next = comparison.getNextE().getNextV();
+				if(vertex_current.getPos().equals(vertex_comparison_next.getPos()) &&
+						vertex_next.getPos().equals(vertex_comparison.getPos())){
+					current.setFlipE(comparison);
+					comparison.setFlipE(current);
+				}
+			}
+		}
+	}
+	
+}
+
+
